@@ -1,5 +1,5 @@
 import yt_dlp
-from urllib.parse import parse_qs, urlparse  # [New] URL 파싱용 모듈
+from urllib.parse import parse_qs, urlparse
 
 class MetadataAnalyzer:
     def __init__(self):
@@ -7,13 +7,16 @@ class MetadataAnalyzer:
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False, 
-            'ignoreerrors': True,  
+            'ignoreerrors': True,
+            # [핵심 수정] 재생목록 URL이 섞여 있어도(Mix 등) 단일 영상만 빠르게 분석하도록 설정
+            # 이 옵션이 없으면 yt-dlp가 전체 목록을 다운로드하려 시도해서 프로그램이 멈춥니다.
+            'noplaylist': True, 
         }
 
     def get_video_info(self, url: str) -> dict:
         """
         URL을 받아 영상의 제목, 썸네일, 그리고 사용 가능한 포맷 리스트를 반환합니다.
-        (재생목록인 경우, 첫 번째 유효한 영상의 포맷 정보를 반환합니다.)
+        ('noplaylist=True' 설정 덕분에 멈추지 않고 즉시 결과를 반환합니다.)
         """
         try:
             with yt_dlp.YoutubeDL(self.ydl_opts) as ydl:
@@ -21,28 +24,24 @@ class MetadataAnalyzer:
                 
                 if not info: return None
 
-                # [Case 1] 재생목록인 경우
+                # [Case 1] 만약 순수 재생목록 URL이라서 playlist 타입으로 잡힌 경우
+                # (noplaylist=True여도 playlist?list=... 형태는 리스트로 인식될 수 있음)
                 if info.get('_type') == 'playlist' or 'entries' in info:
-                    valid_entry = None
                     if 'entries' in info:
+                        # 첫 번째 영상의 정보를 찾아서 반환 (옵션 선택용)
                         for entry in info['entries']:
                             if entry and 'formats' in entry:
-                                valid_entry = entry
-                                break
-                    
-                    if not valid_entry:
-                        return None
-                    
-                    return {
-                        'id': info.get('id'),
-                        'title': info.get('title'),
-                        '_type': 'playlist',
-                        'thumbnail': valid_entry.get('thumbnail'),
-                        'duration': valid_entry.get('duration'),
-                        'formats': self._parse_formats(valid_entry.get('formats', []))
-                    }
+                                return {
+                                    'id': entry.get('id'),
+                                    'title': entry.get('title'),
+                                    '_type': 'video', # UI가 단일 영상처럼 처리하도록 video로 설정
+                                    'thumbnail': entry.get('thumbnail'),
+                                    'duration': entry.get('duration'),
+                                    'formats': self._parse_formats(entry.get('formats', []))
+                                }
+                    return None
 
-                # [Case 2] 단일 영상인 경우
+                # [Case 2] 일반적인 단일 영상 (대부분 여기로 옴)
                 return {
                     'id': info.get('id'),
                     'title': info.get('title'),
@@ -54,7 +53,7 @@ class MetadataAnalyzer:
                 }
 
         except Exception as e:
-            print(f"[Error] 메타데이터 분석 실패: {e}")
+            # print(f"[Error] 메타데이터 분석 실패: {e}")
             return None
 
     def _parse_formats(self, raw_formats: list) -> dict:
@@ -95,20 +94,18 @@ class MetadataAnalyzer:
     def get_playlist_items(self, url: str) -> list:
         """
         재생목록 URL을 받아 포함된 모든 영상의 정보(URL, 제목) 리스트를 반환합니다.
+        (main.py에서 사용자가 전체 다운로드를 승인했을 때만 호출됩니다.)
         """
         try:
-            # [핵심 수정] URL에 'list=' 파라미터가 있다면 순수 재생목록 주소로 변환
-            # (watch?v=...&list=... 형태를 playlist?list=... 형태로 변경)
             parsed_url = urlparse(url)
             qs = parse_qs(parsed_url.query)
             
             target_url = url
             if 'list' in qs:
                 playlist_id = qs['list'][0]
-                # 영상 ID가 섞여 있으면 yt-dlp가 헷갈려하므로 순수 playlist 주소로 변경
                 target_url = f"https://www.youtube.com/playlist?list={playlist_id}"
-                # print(f"[Debug] 재생목록 순수 URL로 변환: {target_url}")
 
+            # 재생목록 추출용 별도 옵션 (noplaylist를 쓰면 안 됨)
             list_opts = {
                 'extract_flat': True, 
                 'quiet': True,
@@ -116,7 +113,6 @@ class MetadataAnalyzer:
             }
             
             with yt_dlp.YoutubeDL(list_opts) as ydl:
-                # 변환된 target_url 사용
                 info = ydl.extract_info(target_url, download=False)
                 
                 if not info: return []

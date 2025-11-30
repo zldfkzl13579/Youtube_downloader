@@ -1,24 +1,40 @@
-# 1. 파이썬 관련 잡동사니 무시
+# OS
+.DS_Store
+Thumbs.db
+
+# Python Basics
+pycache/
 __pycache__/
 *.py[cod]
 *$py.class
-.env
+
+# Virtual Environments
 venv/
 env/
+.env
+.venv/
+Scripts/
 
-# 2. 다운로드된 영상들 무시 (중요!)
-downloads/
-my_custom_folder/
+# Build & Distribution (PyInstaller)
+build/
+dist/
+*.spec
+*.manifest
 
-# 3. 실행 파일 및 바이너리 무시 (ffmpeg는 용량이 커서 올리면 안 됨)
+# Project Specific (Runtime Dat)
+settings.json
+
+# 다운로드 기록 파일
+download_history.csv
+
+# Logs
+*.log
+
+# External Binaries
 bin/
 *.exe
 
-# 4. 사용자 설정 및 로그 무시 (개인 정보 보호)
-settings.json
-download_history.csv
-*.log
-
-# 5. OS 생성 파일 무시
-.DS_Store
-Thumbs.db
+# IDE Settings
+.vscode/
+.idea/
+*.swp

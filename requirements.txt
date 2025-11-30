@@ -1,0 +1,9 @@
+#Core Engine
+yt-dlp>=2023.10.13
+#User Interface (CLI)
+rich>=13.6.0
+questionary>=2.0.1
+#Utilities
+pyperclip>=1.8.2
+#Build Tool (Exe 생성용)
+pyinstaller>=6.1.0

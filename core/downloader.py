@@ -28,9 +28,8 @@ class Downloader:
                         final_path = self._get_actual_filename(filename, options)
 
                         # 심화 후처리 (Upscale, DSP 등)
-                        # use_upscale도 여기서 처리해야 하므로 조건 추가
                         if options.get('use_enhance') or options.get('audio_channels') or options.get('use_upscale'):
-                            print(f"[Post-Process] 심화 변환 시작: {final_path}")
+                            # print(f"[Post-Process] 심화 변환 시작: {final_path}")
                             temp_output = final_path.replace('.', '_fixed.')
                             
                             # FFmpegHandler 호출
@@ -46,11 +45,10 @@ class Downloader:
 
                     except Exception as e:
                         retries += 1
-                        print(f"[Warning] 다운로드 실패. 재시도 중 ({retries}/{self.max_retries})... 원인: {e}")
+                        # print(f"[Warning] 다운로드 실패. 재시도 중 ({retries}/{self.max_retries})... 원인: {e}")
                         time.sleep(2)
                 
                 if not success:
-                    print(f"[Error] 최종 실패: {url}")
                     results.append({'status': 'error', 'url': url, 'msg': "Max retries exceeded"})
         
         return results
@@ -60,49 +58,53 @@ class Downloader:
             'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
             'quiet': True,
             'no_warnings': True,
-            'ffmpeg_location': os.path.dirname(self.ffmpeg_handler.ffmpeg_path),
             'progress_hooks': [],
             'postprocessors': [],
             'updatetime': False,
-            'updatetime': False,
-            'ignoreerrors': True,  # [New] 비공개 영상 등 에러 발생 시 건너뛰기
+            'ignoreerrors': True,
         }
 
-        # --- [수정된 포맷 선택 로직] ---
+        # [핵심 수정] FFmpeg 경로 설정 안전장치 추가
+        # 경로가 폴더가 아닌 'ffmpeg'(시스템 명령)일 경우 location 설정을 건너뛰어야 yt-dlp가 시스템 경로를 탐색함
+        if self.ffmpeg_handler.ffmpeg_path:
+            ffmpeg_dir = os.path.dirname(self.ffmpeg_handler.ffmpeg_path)
+            if ffmpeg_dir: # 디렉토리 경로가 있을 때만 명시
+                ydl_opts['ffmpeg_location'] = ffmpeg_dir
+
+        # --- 포맷 선택 로직 ---
         video_fmt = ""
         audio_fmt = ""
         
         # 1. 비디오 모드
-        if options.get('ext') not in ['mp3', 'flac', 'wav', 'aac']:
-            # 해상도 제약 조건 (이하 화질 선택)
+        if options.get('ext') not in ['mp3', 'flac', 'wav', 'aac', 'm4a']:
             if options.get('height'):
                 video_fmt = f"bestvideo[height<={options['height']}]"
             else:
                 video_fmt = "bestvideo"
             
-            # [핵심 수정] 오디오 반드시 추가
             audio_fmt = "+bestaudio/best"
             
-            # 확장자 병합 설정
             user_ext = options.get('ext')
             use_original = options.get('use_original')
 
             if user_ext:
                 ydl_opts['merge_output_format'] = user_ext
             elif use_original:
-                pass # 원본 유지
+                pass 
             else:
-                ydl_opts['merge_output_format'] = 'mp4' # 기본값
+                ydl_opts['merge_output_format'] = 'mp4'
             
-            # 최종 포맷 문자열 결합 (Video + Audio)
             ydl_opts['format'] = video_fmt + audio_fmt
 
         # 2. 오디오 모드
         else:
             ydl_opts['format'] = "bestaudio/best"
+            target_ext = options.get('ext', 'mp3')
+            
+            # [Fix] m4a 변환 시 코덱 호환성 문제 방지 (Opus -> AAC 자동 변환 유도)
             ydl_opts['postprocessors'].append({
                 'key': 'FFmpegExtractAudio',
-                'preferredcodec': options.get('ext', 'mp3'),
+                'preferredcodec': target_ext,
                 'preferredquality': str(options.get('audio_bitrate', 192)),
             })
 
